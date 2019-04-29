@@ -14,7 +14,7 @@ result = ddb.create_table(
                 'KeyType': 'HASH'
             },
             {
-                'AttributeName': 'email',
+                'AttributeName': 'password',
                 'KeyType': 'RANGE'
             }
         ],
@@ -24,7 +24,7 @@ result = ddb.create_table(
                 'AttributeType': 'S'
             },
             {
-                'AttributeName': 'email',
+                'AttributeName': 'password',
                 'AttributeType': 'S'
             }
         ],
@@ -102,13 +102,21 @@ with table.batch_writer() as batch:
         }
     )
 
+    batch.put_item(
+        Item={
+            'username': 'pjackson',
+            'package': 'tmux_1.6-2_amd64.deb'
+        }
+    )
+
+
 # return customers one get item results 
 
 table = ddb.Table('Customers')
 response = table.get_item(
                  Key={
                     'username': 'jdoe',
-                    'email': 'jdoe@example.com'}
+                    'password': 'test123'}
                 )
 print(response['Item'])
 
