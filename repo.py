@@ -1,4 +1,5 @@
-from flask import Flask, Response, send_file
+from flask import Flask, Response, send_file, request
+from functools import wraps
 import boto3
 import os
 
@@ -6,7 +7,7 @@ import os
 app =  Flask(__name__)
 
 s3 = boto3.client('s3')
-dynamodb = boto3.resource('dynamodb', endpoint_url='http://localhost:8000')
+ddb = boto3.resource('dynamodb', endpoint_url='http://localhost:8000')
 stage = os.environ.get('stage')
 if not stage:
     stage = ''
@@ -14,6 +15,30 @@ else:
     stage = '{}/'.format(stage)
 
 BUCKET_NAME = 'deb-fluendo'
+
+def authenticate(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        auth = request.authorization
+        print(auth)
+        if auth:
+            table = ddb.Table('Customers')
+            resp = table.get_item(Key={'username':auth['username'], 'password': auth['password']})
+            is_valid = resp.get('Item', False)
+            if not is_valid:
+                return Response(
+                                        'Could not verify your access level for that URL.\n'
+                                        'You have to login with proper credentials', 401,
+                                        {'WWW-Authenticate': 'Basic realm="Login Required"'})
+        else:
+                return Response(
+                                        'Could not verify your access level for that URL.\n'
+                                        'You have to login with proper credentials', 401,
+                                        {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
+        return f(*args, **kwargs)
+    return wrapper
+
 
 @app.route('/', methods=['GET'])
 def index():
@@ -39,9 +64,9 @@ def path_3(key, key1, key2, key3):
 def path_4(key, key1, key2, key3, key4):
     return get_package(key, key1, key2, key3, key4)
 
+@authenticate
 def get_package(*args):
     body = ''
-    import ipdb; ipdb.set_trace()
     if args[0] == None:
         key = ''
     else:
@@ -71,7 +96,7 @@ def get_package(*args):
         pass
     try:
         for obj in result['Contents']:
-            is_valid = check_pkg_policy(obj.get('Key'))
+            is_valid = check_pkg_policy('pjackson', obj.get('Key').split('/')[-1])
             if is_valid:
                 body += "<tr><td><a href='/{}{}'>{}</a></td></tr>".format(stage, obj.get('Key'), obj.get('Key').split('/')[-1])
     except:
@@ -87,9 +112,18 @@ def _render(body):
             <body><table>{}</table></body></html>'.format(body)
     return html
 
-def check_pkg_policy(name):
-    return True
+def check_pkg_policy(username, pkg):
+
+    if not pkg in ['Packages', 'gpg.key', 'InRelease', 'Release', 'Release.gpg'] :
+        table = ddb.Table('PackagePolicies')
+        resp = table.get_item(Key={'username':username, 'package': pkg})
+        is_valid = resp.get('Item', False)
+        if is_valid:
+            return True
+        else:
+            return is_valid
+    else:
+        return True
 
 if __name__ == '__main__':
     app.run()
-
