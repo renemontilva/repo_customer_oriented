@@ -85,6 +85,7 @@ def get_package(*args):
         except s3.exceptions.NoSuchKey:
             pass
 
+
         key += '/'
 
     result = s3.list_objects_v2(Bucket=BUCKET_NAME, Delimiter='/', Prefix=key, StartAfter=key)
@@ -96,9 +97,16 @@ def get_package(*args):
         pass
     try:
         for obj in result['Contents']:
-            is_valid = check_pkg_policy('pjackson', obj.get('Key').split('/')[-1])
-            if is_valid:
-                body += "<tr><td><a href='/{}{}'>{}</a></td></tr>".format(stage, obj.get('Key'), obj.get('Key').split('/')[-1])
+            if request.authorization:
+                is_valid = check_pkg_policy(request.authorization['username'], obj.get('Key').split('/')[-1])
+                if is_valid:
+                    body += "<tr><td><a href='/{}{}'>{}</a></td></tr>".format(stage, obj.get('Key'), obj.get('Key').split('/')[-1])
+                else:
+                    return Response(
+                                'There is not permission for this package\n'
+                                'You have to login with proper credentials', 403,''
+                )
+
     except:
         pass
     return Response(_render(body),
@@ -113,7 +121,6 @@ def _render(body):
     return html
 
 def check_pkg_policy(username, pkg):
-
     if not pkg in ['Packages', 'gpg.key', 'InRelease', 'Release', 'Release.gpg'] :
         table = ddb.Table('PackagePolicies')
         resp = table.get_item(Key={'username':username, 'package': pkg})
